@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: antiplag
+      POSTGRES_PASSWORD: antiplag
+      POSTGRES_DB: antiplag
+    ports:
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U antiplag -d antiplag" ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  file_storing_service:
+    build: ./file_storing_service
+    volumes:
+      - filestore_data:/app/data
+    ports:
+      - "8001:8001"
+
+  file_analysis_service:
+    build: ./file_analysis_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      file_storing_service:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+psycopg://antiplag:antiplag@postgres:5432/antiplag
+      FILE_STORE_URL: http://file_storing_service:8001
+    ports:
+      - "8002:8002"
+
+
+  gateway:
+    build: ./gateway
+    depends_on:
+      - file_storing_service
+      - file_analysis_service
+    environment:
+      FILE_STORE_URL: http://file_storing_service:8001
+      ANALYSIS_URL: http://file_analysis_service:8002
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
+  filestore_data:
